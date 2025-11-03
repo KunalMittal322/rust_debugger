@@ -34,7 +34,7 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
     let end_char = (if first == '"' as u16 {'"'} else {' '}) as u16;
 
     loop{
-        let next = cmd_line_iter.next().ok_or("No arguments found");
+        let next = cmd_line_iter.next().ok_or("No arguments found")?;
         if next == end_char {
             break;
         }
@@ -45,7 +45,7 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
 
 fn main_debugger_loop() {
     loop{
-        let mut debug_event: DEBUG_EVENT = unsafe {std::mem:zeroed()};
+        let mut debug_event: DEBUG_EVENT = unsafe {std::mem::zeroed()};
         unsafe {
             WaitForDebugEvent(&mut debug_event, INFINITE);
         }
@@ -79,19 +79,38 @@ fn main_debugger_loop() {
 fn main() {
     let target_command_line_result = parse_command_line();
 
+    let mut command_line_buffer = match target_command_line_result {
+        Ok(i) => i,
+        Err(msg) => {
+            show_usage(msg);
+            return;
+        }
+    };
+
+    let mut startup_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
+    startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
+
     let mut process_id: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
-    unsafe {
+    let ret = unsafe {
         CreateProcessW(
             null(),
+            command_line_buffer.as_mut_ptr(),
             null(),
             null(),
+            FALSE,
+            DEBUG_ONLY_THIS_PROCESS | CREATE_NEW_CONSOLE,
             null(),
             null(),
-            null(),
-            null(),
-            null(),
-            null(),
-            null(),
-        );
+            &startup_info.StartupInfo,
+            &mut process_id,
+        )
+    };
+
+    if ret == FALSE {
+        panic!("CreateProcessW Failed");
     }
+
+    unsafe { CloseHandle(process_id.hThread) };
+    main_debugger_loop();
+    unsafe { CloseHandle(process_id.hProcess) };
 }
