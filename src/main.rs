@@ -9,7 +9,7 @@ use std::ptr::null;
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
     unsafe {
-        while *ptr.add(len) != 0{
+        while *ptr.add(len) != 0 {
             len += 1;
         }
     }
@@ -17,7 +17,7 @@ fn wcslen(ptr: *const u16) -> usize {
 }
 
 fn show_usage(error_message: &str) {
-    println!("Error: {msg}", msg=error_message);
+    println!("Error: {msg}", msg = error_message);
     println!("Usage: DbgRs<Command Line>");
 }
 
@@ -31,26 +31,33 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
 
     let first = cmd_line_iter.next().ok_or("Command line was empty")?;
 
-    let end_char = (if first == '"' as u16 {'"'} else {' '}) as u16;
+    let end_char = (if first == '"' as u16 { '"' } else { ' ' }) as u16;
 
-    loop{
+    loop {
         let next = cmd_line_iter.next().ok_or("No arguments found")?;
         if next == end_char {
             break;
         }
     }
     let cmd_line_iter = cmd_line_iter.skip_while(|x| x == &(' ' as u16));
+    println!("{:?}", cmd_line_iter.clone().collect::<Vec<u16>>());
     Ok(cmd_line_iter.collect())
 }
 
 fn main_debugger_loop() {
-    loop{
-        let mut debug_event: DEBUG_EVENT = unsafe {std::mem::zeroed()};
+    loop {
+        let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
         unsafe {
-            WaitForDebugEvent(&mut debug_event, INFINITE);
+            WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
         match debug_event.dwDebugEventCode {
-            EXCEPTION_DEBUG_EVENT => println!("Exception"),
+            EXCEPTION_DEBUG_EVENT => {
+                println!("Exception");
+                unsafe {
+                    OutputDebugStringW(lpoutputstring);
+                    println!("{:?}", *debug_event.u.DebugString.lpDebugStringData);
+                };
+            }
             CREATE_THREAD_DEBUG_EVENT => println!("CreateThread"),
             CREATE_PROCESS_DEBUG_EVENT => println!("CreateProcess"),
             EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
@@ -110,7 +117,7 @@ fn main() {
         panic!("CreateProcessW Failed");
     }
 
-    unsafe { CloseHandle(process_id.hThread) };
+    //unsafe { CloseHandle(process_id.hThread) };
     main_debugger_loop();
     unsafe { CloseHandle(process_id.hProcess) };
 }
