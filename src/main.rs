@@ -5,6 +5,7 @@ use windows_sys::{
 };
 
 use std::ptr::null;
+use debuggerRust::parser_debugger;
 
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
@@ -53,12 +54,10 @@ fn main_debugger_loop() {
         match debug_event.dwDebugEventCode {
             EXCEPTION_DEBUG_EVENT => {
                 println!("Exception");
-                unsafe {
-                    OutputDebugStringW(lpoutputstring);
-                    println!("{:?}", *debug_event.u.DebugString.lpDebugStringData);
-                };
             }
-            CREATE_THREAD_DEBUG_EVENT => println!("CreateThread"),
+            CREATE_THREAD_DEBUG_EVENT => {
+                println!("CreateThread")
+            },
             CREATE_PROCESS_DEBUG_EVENT => println!("CreateProcess"),
             EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
             EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
@@ -73,6 +72,15 @@ fn main_debugger_loop() {
             break;
         }
 
+        let cmd = parser_debugger::read_command();
+        match cmd {
+            parser_debugger::grammar::Expr::Go(_) => {
+                //TODO: 
+            }
+            parser_debugger::grammar::Expr::Quit(_) => {
+                return;
+            }
+        }
         unsafe {
             ContinueDebugEvent(
                 debug_event.dwProcessId,
@@ -117,7 +125,7 @@ fn main() {
         panic!("CreateProcessW Failed");
     }
 
-    //unsafe { CloseHandle(process_id.hThread) };
     main_debugger_loop();
+    unsafe { CloseHandle(process_id.hThread) };
     unsafe { CloseHandle(process_id.hProcess) };
 }
