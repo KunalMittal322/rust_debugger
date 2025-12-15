@@ -1,11 +1,9 @@
-use windows_sys::{
-    Win32::Foundation::*,
-    Win32::System::Environment::*,
-    Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
+use windows_sys::{ Win32::Foundation::*, Win32::System::Environment::*, Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
 };
 
 use std::ptr::null;
 use debuggerRust::parser_debugger;
+use debuggerRust::debug_commands;
 
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
@@ -48,6 +46,7 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
 fn main_debugger_loop() {
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
+        let mut user_command_loop = true;
         unsafe {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
@@ -72,13 +71,31 @@ fn main_debugger_loop() {
             break;
         }
 
-        let cmd = parser_debugger::read_command();
-        match cmd {
-            parser_debugger::grammar::Expr::Go(_) => {
-                //TODO: 
+
+        while user_command_loop{
+            let mut main_thread_context_buffer = unsafe {std::mem::zeroed()};
+            let main_thread_context = unsafe {GetThreadContext(debug_event.dwThreadId as isize, &mut main_thread_context_buffer)};
+            if main_thread_context == 0{
+                panic!("Could not read thread handle"); 
             }
-            parser_debugger::grammar::Expr::Quit(_) => {
-                return;
+
+            println!("[{:X}] {:#018x}", debug_event.dwThreadId, main_thread_context_buffer.Rip);
+            let cmd = parser_debugger::read_command();
+            match cmd {
+                parser_debugger::grammar::Expr::Go(_) => {
+                    user_command_loop = false;
+                }
+                parser_debugger::grammar::Expr::Quit(_) => {
+                    return;
+                }
+                parser_debugger::grammar::Expr::Read(_) => {
+                    println!("READ REGISTERS");
+                    debug_commands::read_registers(debug_event.dwThreadId as isize);
+                }
+                parser_debugger::grammar::Expr::StepInto(_) => {
+                    println!("STEP");
+                    debug_commands::step_into(debug_event.dwThreadId as isize);
+                }
             }
         }
         unsafe {
