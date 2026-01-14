@@ -1,16 +1,32 @@
 use windows_sys::Win32::{Foundation::HANDLE, System::Diagnostics::Debug::{CONTEXT, GetThreadContext, SetThreadContext}};
 
 #[repr(align(16))]
-struct AlignedContext<'a> {
-    context: &'a mut CONTEXT,
+pub struct AlignedContext {
+    pub context: CONTEXT,
 }
+
+const CONTEXT_AMD64: u32 = 0x00100000;
+const CONTEXT_CONTROL: u32 = CONTEXT_AMD64 | 0x00000001;
+const CONTEXT_INTEGER: u32 = CONTEXT_AMD64 | 0x00000002;
+const CONTEXT_SEGMENTS: u32 = CONTEXT_AMD64 | 0x00000004;
+const CONTEXT_FLOATING_POINT: u32 = CONTEXT_AMD64 | 0x00000008;
+const CONTEXT_DEBUG_REGISTERS: u32 = CONTEXT_AMD64 | 0x00000010;
+
+#[allow(dead_code)]
+const CONTEXT_FULL: u32 = CONTEXT_CONTROL | CONTEXT_INTEGER | CONTEXT_FLOATING_POINT;
+pub const CONTEXT_ALL: u32 = CONTEXT_CONTROL
+    | CONTEXT_INTEGER
+    | CONTEXT_SEGMENTS
+    | CONTEXT_FLOATING_POINT
+    | CONTEXT_DEBUG_REGISTERS;
+
 pub fn read_registers(thread_handle: HANDLE) {
-    let mut lpcontext_buffer: CONTEXT = unsafe { std::mem::zeroed() };
-    let aligned_lpcontext_buffer: AlignedContext = AlignedContext {
-        context: &mut lpcontext_buffer,
+    let lpcontext_buffer: CONTEXT = unsafe { std::mem::zeroed() };
+    let mut aligned_lpcontext_buffer: AlignedContext = AlignedContext {
+        context: lpcontext_buffer,
     };
     unsafe {
-        GetThreadContext(thread_handle, aligned_lpcontext_buffer.context);
+        GetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context);
     }
 
     let context = aligned_lpcontext_buffer.context;
@@ -42,16 +58,16 @@ pub fn read_registers(thread_handle: HANDLE) {
 
 const TRAP_FLAG: u32 = 1 << 8;
 pub fn step_into(thread_handle: HANDLE) {
-    let mut lpcontext_buffer: CONTEXT = unsafe { std::mem::zeroed() };
-    let aligned_lpcontext_buffer: AlignedContext = AlignedContext {
-        context: &mut lpcontext_buffer,
+    let lpcontext_buffer: CONTEXT = unsafe { std::mem::zeroed() };
+    let mut aligned_lpcontext_buffer: AlignedContext = AlignedContext {
+        context: lpcontext_buffer,
     };
     unsafe {
-        GetThreadContext(thread_handle, aligned_lpcontext_buffer.context);
+        GetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context);
     }
 
     aligned_lpcontext_buffer.context.EFlags |= TRAP_FLAG;
-    let ret = unsafe { SetThreadContext(thread_handle, aligned_lpcontext_buffer.context) };
+    let ret = unsafe { SetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context) };
     if ret == 0 {
         panic!("Set Thread Context Failed");
     }

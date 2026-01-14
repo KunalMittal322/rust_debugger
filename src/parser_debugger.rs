@@ -1,5 +1,4 @@
 use std::io::Write;
-use windows_sys::Win32::System::Diagnostics::Debug::*;
 
 use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter, Level, SpanLabel, SpanStyle};

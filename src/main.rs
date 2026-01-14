@@ -1,9 +1,15 @@
-use windows_sys::{ Win32::Foundation::*, Win32::System::Environment::*, Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
+use windows_sys::{
+    Win32::Foundation::*,
+    Win32::System::Environment::*,
+    Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
 };
 
-use std::ptr::null;
-use debuggerRust::parser_debugger;
 use debuggerRust::debug_commands;
+use debuggerRust::parser_debugger;
+use std::ptr::null;
+
+use debug_commands::CONTEXT_ALL;
+use debug_commands::AlignedContext;
 
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
@@ -13,6 +19,25 @@ fn wcslen(ptr: *const u16) -> usize {
         }
     }
     len
+}
+
+
+#[derive(Debug)]
+struct AutoCloseHandle(HANDLE);
+
+impl AutoCloseHandle {
+    pub fn handle(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for AutoCloseHandle {
+    fn drop(&mut self) {
+        println!("This shit dropped like i was as a baby");
+        unsafe {
+            CloseHandle(self.0);
+        }
+    }
 }
 
 fn show_usage(error_message: &str) {
@@ -39,14 +64,13 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
         }
     }
     let cmd_line_iter = cmd_line_iter.skip_while(|x| x == &(' ' as u16));
-    println!("{:?}", cmd_line_iter.clone().collect::<Vec<u16>>());
     Ok(cmd_line_iter.collect())
 }
 
 fn main_debugger_loop() {
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
-        let mut user_command_loop = true;
+        let mut user_command_loop = false;
         unsafe {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
@@ -55,8 +79,9 @@ fn main_debugger_loop() {
                 println!("Exception");
             }
             CREATE_THREAD_DEBUG_EVENT => {
-                println!("CreateThread")
-            },
+                println!("CreateThread");
+                user_command_loop = true;
+            }
             CREATE_PROCESS_DEBUG_EVENT => println!("CreateProcess"),
             EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
             EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
@@ -71,15 +96,29 @@ fn main_debugger_loop() {
             break;
         }
 
+        while user_command_loop {
+            let debug_event_thread = AutoCloseHandle(unsafe {
+                OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId)
+            });
+            let mut main_thread_context_buffer: AlignedContext = unsafe { std::mem::zeroed() };
+            main_thread_context_buffer.context.ContextFlags = CONTEXT_ALL;
 
-        while user_command_loop{
-            let mut main_thread_context_buffer = unsafe {std::mem::zeroed()};
-            let main_thread_context = unsafe {GetThreadContext(debug_event.dwThreadId as isize, &mut main_thread_context_buffer)};
-            if main_thread_context == 0{
-                panic!("Could not read thread handle"); 
+            let main_thread_context = unsafe {
+                GetThreadContext(
+                    debug_event_thread.handle(),
+                    &mut main_thread_context_buffer.context,
+                )
+            };
+            if main_thread_context == FALSE {
+                panic!("Could not read thread handle");
             }
 
-            println!("[{:X}] {:#018x}", debug_event.dwThreadId, main_thread_context_buffer.Rip);
+            println!(
+                "[debug_event thread id: {}] , thread_id from openThread: {:X}, Instruction Pointer: {:#018x}",
+                debug_event.dwThreadId,
+                debug_event_thread.handle(),
+                main_thread_context_buffer.context.Rip
+            );
             let cmd = parser_debugger::read_command();
             match cmd {
                 parser_debugger::grammar::Expr::Go(_) => {
@@ -90,11 +129,11 @@ fn main_debugger_loop() {
                 }
                 parser_debugger::grammar::Expr::Read(_) => {
                     println!("READ REGISTERS");
-                    debug_commands::read_registers(debug_event.dwThreadId as isize);
+                    debug_commands::read_registers(debug_event_thread.handle() as isize);
                 }
                 parser_debugger::grammar::Expr::StepInto(_) => {
                     println!("STEP");
-                    debug_commands::step_into(debug_event.dwThreadId as isize);
+                    debug_commands::step_into(debug_event_thread.handle() as isize);
                 }
             }
         }
@@ -122,7 +161,7 @@ fn main() {
     let mut startup_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
 
-    let mut process_id: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
+    let mut process_information: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
     let ret = unsafe {
         CreateProcessW(
             null(),
@@ -134,15 +173,14 @@ fn main() {
             null(),
             null(),
             &startup_info.StartupInfo,
-            &mut process_id,
+            &mut process_information,
         )
     };
 
     if ret == FALSE {
         panic!("CreateProcessW Failed");
     }
-
+    let _main_process_handle = AutoCloseHandle(process_information.dwProcessId as isize);
+    let _main_process_thread_handle = AutoCloseHandle(process_information.dwThreadId as isize);
     main_debugger_loop();
-    unsafe { CloseHandle(process_id.hThread) };
-    unsafe { CloseHandle(process_id.hProcess) };
 }
