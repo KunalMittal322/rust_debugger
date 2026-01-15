@@ -170,6 +170,7 @@ fn main() {
         }
     };
 
+    println!("Command was: {}", String::from_utf16_lossy(command_line_buffer.as_slice()));
     let mut startup_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
 
