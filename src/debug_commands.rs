@@ -25,6 +25,7 @@ pub fn read_registers(thread_handle: HANDLE) {
     let mut aligned_lpcontext_buffer: AlignedContext = AlignedContext {
         context: lpcontext_buffer,
     };
+    aligned_lpcontext_buffer.context.ContextFlags = CONTEXT_ALL;
     unsafe {
         GetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context);
     }
@@ -62,6 +63,7 @@ pub fn step_into(thread_handle: HANDLE) {
     let mut aligned_lpcontext_buffer: AlignedContext = AlignedContext {
         context: lpcontext_buffer,
     };
+    aligned_lpcontext_buffer.context.ContextFlags = CONTEXT_ALL;
     unsafe {
         GetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context);
     }

@@ -70,14 +70,14 @@ fn main_debugger_loop() {
     let mut after_step_input = true;
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
-        let mut user_command_loop = false;
+        let mut user_command_loop = true;
         unsafe {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
         let mut windows_debug_event_continuity = DBG_CONTINUE;
         match debug_event.dwDebugEventCode {
             EXCEPTION_DEBUG_EVENT => {
-                println!("EXCEPTION IN DEBUG UH OH");
+                println!("EXCEPTION IN DEBUG");
                 let exception_type =
                     unsafe { debug_event.u.Exception.ExceptionRecord.ExceptionCode };
                 let first_time = unsafe { debug_event.u.Exception.dwFirstChance };
@@ -108,7 +108,7 @@ fn main_debugger_loop() {
         }
         while user_command_loop {
             let debug_event_thread = AutoCloseHandle(unsafe {
-                OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId)
+                OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, debug_event.dwThreadId)
             });
             let mut main_thread_context_buffer: AlignedContext = unsafe { std::mem::zeroed() };
             main_thread_context_buffer.context.ContextFlags = CONTEXT_ALL;
