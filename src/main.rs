@@ -8,8 +8,8 @@ use debuggerRust::debug_commands;
 use debuggerRust::parser_debugger;
 use std::ptr::null;
 
-use debug_commands::CONTEXT_ALL;
 use debug_commands::AlignedContext;
+use debug_commands::CONTEXT_ALL;
 
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
@@ -20,7 +20,6 @@ fn wcslen(ptr: *const u16) -> usize {
     }
     len
 }
-
 
 #[derive(Debug)]
 struct AutoCloseHandle(HANDLE);
@@ -68,20 +67,32 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
 }
 
 fn main_debugger_loop() {
+    let mut after_step_input = true;
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
         let mut user_command_loop = false;
         unsafe {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
+        let mut windows_debug_event_continuity = DBG_CONTINUE;
         match debug_event.dwDebugEventCode {
             EXCEPTION_DEBUG_EVENT => {
-                println!("Exception");
+                println!("EXCEPTION IN DEBUG UH OH");
+                let exception_type =
+                    unsafe { debug_event.u.Exception.ExceptionRecord.ExceptionCode };
+                let first_time = unsafe { debug_event.u.Exception.dwFirstChance };
+                if after_step_input && exception_type == EXCEPTION_SINGLE_STEP && first_time != 0 {
+                    windows_debug_event_continuity = DBG_CONTINUE;
+                    after_step_input = false;
+                } else {
+                    windows_debug_event_continuity = DBG_EXCEPTION_NOT_HANDLED;
+                    println!(
+                        "This is not our first rodeo/some exception went wack: {}, {}, {}",
+                        after_step_input, exception_type, first_time
+                    );
+                }
             }
-            CREATE_THREAD_DEBUG_EVENT => {
-                println!("CreateThread");
-                user_command_loop = true;
-            }
+            CREATE_THREAD_DEBUG_EVENT => println!("CreateThread"),
             CREATE_PROCESS_DEBUG_EVENT => println!("CreateProcess"),
             EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
             EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
@@ -95,7 +106,6 @@ fn main_debugger_loop() {
         if debug_event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT {
             break;
         }
-
         while user_command_loop {
             let debug_event_thread = AutoCloseHandle(unsafe {
                 OpenThread(THREAD_ALL_ACCESS, FALSE, debug_event.dwThreadId)
@@ -134,6 +144,8 @@ fn main_debugger_loop() {
                 parser_debugger::grammar::Expr::StepInto(_) => {
                     println!("STEP");
                     debug_commands::step_into(debug_event_thread.handle() as isize);
+                    after_step_input = true;
+                    user_command_loop = false;
                 }
             }
         }
@@ -141,7 +153,7 @@ fn main_debugger_loop() {
             ContinueDebugEvent(
                 debug_event.dwProcessId,
                 debug_event.dwThreadId,
-                DBG_EXCEPTION_NOT_HANDLED,
+                windows_debug_event_continuity,
             );
         }
     }
