@@ -1,4 +1,11 @@
-use windows_sys::Win32::{Foundation::HANDLE, System::Diagnostics::Debug::{CONTEXT, GetThreadContext, SetThreadContext}};
+use std::ffi::c_void;
+
+use windows_sys::Win32::{
+    Foundation::{FALSE, HANDLE},
+    System::Diagnostics::Debug::{CONTEXT, GetThreadContext, ReadProcessMemory, SetThreadContext},
+};
+
+use crate::parser_debugger::grammar::{EvalExpr};
 
 #[repr(align(16))]
 pub struct AlignedContext {
@@ -72,5 +79,37 @@ pub fn step_into(thread_handle: HANDLE) {
     let ret = unsafe { SetThreadContext(thread_handle, &mut aligned_lpcontext_buffer.context) };
     if ret == 0 {
         panic!("Set Thread Context Failed");
+    }
+}
+
+pub fn evaluate_expression(expr: EvalExpr) -> u64 {
+    match expr {
+        EvalExpr::Number(x) => x,
+        EvalExpr::Add(x, _, y) => evaluate_expression(*x) + evaluate_expression(*y),
+    }
+}
+
+pub fn display_memory(thread_handle: HANDLE, memory_address_to_read: u64) {
+    let mut buffer: [u8; 16] = [0; 16];
+    let mut bytes_read: usize = 0;
+
+    println!("Buffer length: {}", buffer.len());
+
+    let read_process_memory_result = unsafe {
+        ReadProcessMemory(
+            thread_handle,
+            memory_address_to_read as *const c_void,
+            buffer.as_mut_ptr() as *mut c_void,
+            buffer.len(),
+            &mut bytes_read as *mut usize,
+        )
+    };
+    if read_process_memory_result == FALSE {
+        println!("Unable to read memory at this handle");
+    }else{
+        for n in 0..bytes_read{
+            print!("{:02X} " , buffer[n]);
+        }
+        println!();
     }
 }

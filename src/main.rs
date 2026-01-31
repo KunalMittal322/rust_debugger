@@ -4,12 +4,14 @@ use windows_sys::{
     Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
 };
 
-use debuggerRust::debug_commands;
 use debuggerRust::parser_debugger;
+use debuggerRust::{debug_commands, memory};
 use std::ptr::null;
 
 use debug_commands::AlignedContext;
 use debug_commands::CONTEXT_ALL;
+
+use memory::MemorySource;
 
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
@@ -32,7 +34,6 @@ impl AutoCloseHandle {
 
 impl Drop for AutoCloseHandle {
     fn drop(&mut self) {
-        println!("This shit dropped like i was as a baby");
         unsafe {
             CloseHandle(self.0);
         }
@@ -66,7 +67,7 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
     Ok(cmd_line_iter.collect())
 }
 
-fn main_debugger_loop() {
+fn main_debugger_loop(debugger_handle: HANDLE) {
     let mut after_step_input = true;
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
@@ -98,7 +99,11 @@ fn main_debugger_loop() {
             EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
             LOAD_DLL_DEBUG_EVENT => println!("LoadDll"),
             UNLOAD_DLL_DEBUG_EVENT => println!("UnloadDll"),
-            OUTPUT_DEBUG_STRING_EVENT => println!("OutputDebugString"),
+            OUTPUT_DEBUG_STRING_EVENT => {
+                println!("OutputDebugString");
+
+                let output_string = memory::read_memory_string(debug_event);
+            }
             RIP_EVENT => println!("RipEvent"),
             _ => panic!("Unexpected debug event"),
         }
@@ -108,7 +113,11 @@ fn main_debugger_loop() {
         }
         while user_command_loop {
             let debug_event_thread = AutoCloseHandle(unsafe {
-                OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, debug_event.dwThreadId)
+                OpenThread(
+                    THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                    FALSE,
+                    debug_event.dwThreadId,
+                )
             });
             let mut main_thread_context_buffer: AlignedContext = unsafe { std::mem::zeroed() };
             main_thread_context_buffer.context.ContextFlags = CONTEXT_ALL;
@@ -131,21 +140,30 @@ fn main_debugger_loop() {
             );
             let cmd = parser_debugger::read_command();
             match cmd {
-                parser_debugger::grammar::Expr::Go(_) => {
+                parser_debugger::grammar::CommandExpr::Go(_) => {
                     user_command_loop = false;
                 }
-                parser_debugger::grammar::Expr::Quit(_) => {
+                parser_debugger::grammar::CommandExpr::Quit(_) => {
                     return;
                 }
-                parser_debugger::grammar::Expr::Read(_) => {
+                parser_debugger::grammar::CommandExpr::ReadRegisters(_) => {
                     println!("READ REGISTERS");
                     debug_commands::read_registers(debug_event_thread.handle() as isize);
                 }
-                parser_debugger::grammar::Expr::StepInto(_) => {
+                parser_debugger::grammar::CommandExpr::StepInto(_) => {
                     println!("STEP");
                     debug_commands::step_into(debug_event_thread.handle() as isize);
                     after_step_input = true;
                     user_command_loop = false;
+                }
+                parser_debugger::grammar::CommandExpr::Evaluation(_, expr) => {
+                    println!("EVALUATION");
+                    println!("= 0x{:X}", debug_commands::evaluate_expression(*expr));
+                }
+                parser_debugger::grammar::CommandExpr::DisplayBytes(_, expr) => {
+                    println!("DISPLAY BYTES");
+                    let memory_address = debug_commands::evaluate_expression(*expr);
+                    debug_commands::display_memory(debugger_handle, memory_address);
                 }
             }
         }
@@ -170,7 +188,10 @@ fn main() {
         }
     };
 
-    println!("Command was: {}", String::from_utf16_lossy(command_line_buffer.as_slice()));
+    println!(
+        "Command was: {}",
+        String::from_utf16_lossy(command_line_buffer.as_slice())
+    );
     let mut startup_info: STARTUPINFOEXW = unsafe { std::mem::zeroed() };
     startup_info.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
 
@@ -182,7 +203,7 @@ fn main() {
             null(),
             null(),
             FALSE,
-            DEBUG_ONLY_THIS_PROCESS | CREATE_NEW_CONSOLE,
+            DEBUG_ONLY_THIS_PROCESS | CREATE_NEW_CONSOLE | PROCESS_VM_READ,
             null(),
             null(),
             &startup_info.StartupInfo,
@@ -195,5 +216,5 @@ fn main() {
     }
     let _main_process_handle = AutoCloseHandle(process_information.dwProcessId as isize);
     let _main_process_thread_handle = AutoCloseHandle(process_information.dwThreadId as isize);
-    main_debugger_loop();
+    main_debugger_loop(process_information.hProcess);
 }
