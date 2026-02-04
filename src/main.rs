@@ -11,8 +11,6 @@ use std::ptr::null;
 use debug_commands::AlignedContext;
 use debug_commands::CONTEXT_ALL;
 
-use memory::MemorySource;
-
 fn wcslen(ptr: *const u16) -> usize {
     let mut len = 0;
     unsafe {
@@ -76,6 +74,9 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
         let mut windows_debug_event_continuity = DBG_CONTINUE;
+        let mut original_process = memory::BaseProcess{
+            hProcess: debugger_handle
+        };
         match debug_event.dwDebugEventCode {
             EXCEPTION_DEBUG_EVENT => {
                 println!("EXCEPTION IN DEBUG");
@@ -101,8 +102,13 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             UNLOAD_DLL_DEBUG_EVENT => println!("UnloadDll"),
             OUTPUT_DEBUG_STRING_EVENT => {
                 println!("OutputDebugString");
+                let debug_string_info = unsafe { debug_event.u.DebugString };
+                let is_wide = debug_string_info.fUnicode != 0;
+                let address = debug_string_info.lpDebugStringData as u64;
+                let len = debug_string_info.nDebugStringLength as usize;
 
-                let output_string = memory::read_memory_string(debug_event);
+                let debug_string = memory::read_memory_string(&original_process, address, len, is_wide);
+                println!("Debug String: {}", debug_string.unwrap());
             }
             RIP_EVENT => println!("RipEvent"),
             _ => panic!("Unexpected debug event"),
