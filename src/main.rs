@@ -74,8 +74,8 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
         let mut windows_debug_event_continuity = DBG_CONTINUE;
-        let mut original_process = memory::BaseProcess{
-            hProcess: debugger_handle
+        let mut original_process = memory::BaseProcess {
+            hProcess: debugger_handle,
         };
         match debug_event.dwDebugEventCode {
             EXCEPTION_DEBUG_EVENT => {
@@ -98,7 +98,29 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             CREATE_PROCESS_DEBUG_EVENT => println!("CreateProcess"),
             EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
             EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
-            LOAD_DLL_DEBUG_EVENT => println!("LoadDll"),
+            LOAD_DLL_DEBUG_EVENT => {
+                println!("LoadDll");
+                let load_dll = unsafe { debug_event.u.LoadDll };
+                let dll_base: u64 = load_dll.lpBaseOfDll as u64;
+                println!("Dll Base: {:X}", dll_base);
+
+                if !load_dll.lpImageName.is_null() {
+                    let dll_name_address =
+                        memory::read_memory_data::<u64>(&original_process, load_dll.lpImageName as u64)
+                            .unwrap();
+                    let is_wide = load_dll.fUnicode as i32 != FALSE;
+
+                    let dll_name = memory::read_memory_string(
+                        &original_process,
+                        dll_name_address,
+                        260,
+                        is_wide
+                    ).unwrap();
+                    println!("DLL Name: {}", dll_name);
+                }else{
+                    println!("No Dll Name found");
+                };
+            }
             UNLOAD_DLL_DEBUG_EVENT => println!("UnloadDll"),
             OUTPUT_DEBUG_STRING_EVENT => {
                 println!("OutputDebugString");
@@ -107,7 +129,16 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 let address = debug_string_info.lpDebugStringData as u64;
                 let len = debug_string_info.nDebugStringLength as usize;
 
-                let debug_string = memory::read_memory_string(&original_process, address, len, is_wide);
+                let debug_string2 = memory::read_memory_string(
+                    &original_process,
+                    address,
+                    len,
+                    is_wide,
+                );
+                println!("Debug String: {}", debug_string2.unwrap());
+
+                let debug_string =
+                    memory::read_memory_string(&original_process, address, len, is_wide);
                 println!("Debug String: {}", debug_string.unwrap());
             }
             RIP_EVENT => println!("RipEvent"),
