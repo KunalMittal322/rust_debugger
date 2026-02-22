@@ -1,12 +1,12 @@
 use windows_sys::{
     Win32::Foundation::*,
     Win32::System::Environment::*,
-    Win32::System::{Diagnostics::Debug::*, Threading::*, WindowsProgramming::INFINITE},
+    Win32::System::{Diagnostics::Debug::*, Threading::*},
 };
 
 use debuggerRust::parser_debugger;
 use debuggerRust::{debug_commands, memory};
-use std::ptr::null;
+use std::{ffi::c_void, ptr::null};
 
 use debug_commands::AlignedContext;
 use debug_commands::CONTEXT_ALL;
@@ -172,7 +172,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             println!(
                 "[debug_event thread id: {}] , thread_id from openThread: {:X}, Instruction Pointer: {:#018x}",
                 debug_event.dwThreadId,
-                debug_event_thread.handle(),
+                debug_event_thread.handle() as usize,
                 main_thread_context_buffer.context.Rip
             );
             let cmd = parser_debugger::read_command();
@@ -185,11 +185,11 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 }
                 parser_debugger::grammar::CommandExpr::ReadRegisters(_) => {
                     println!("READ REGISTERS");
-                    debug_commands::read_registers(debug_event_thread.handle() as isize);
+                    debug_commands::read_registers(debug_event_thread.handle() as *mut c_void);
                 }
                 parser_debugger::grammar::CommandExpr::StepInto(_) => {
                     println!("STEP");
-                    debug_commands::step_into(debug_event_thread.handle() as isize);
+                    debug_commands::step_into(debug_event_thread.handle() as *mut c_void);
                     after_step_input = true;
                     user_command_loop = false;
                 }
@@ -251,7 +251,7 @@ fn main() {
     if ret == FALSE {
         panic!("CreateProcessW Failed");
     }
-    let _main_process_handle = AutoCloseHandle(process_information.dwProcessId as isize);
-    let _main_process_thread_handle = AutoCloseHandle(process_information.dwThreadId as isize);
+    let _main_process_handle = AutoCloseHandle(process_information.dwProcessId as *mut c_void);
+    let _main_process_thread_handle = AutoCloseHandle(process_information.dwThreadId as *mut c_void);
     main_debugger_loop(process_information.hProcess);
 }

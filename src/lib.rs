@@ -2,3 +2,4 @@
 pub mod parser_debugger;
 pub mod debug_commands;
 pub mod memory;
+pub mod process;

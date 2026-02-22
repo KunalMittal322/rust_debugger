@@ -2,7 +2,7 @@ use std::ffi::c_void;
 
 use windows_sys::Win32::{
     Foundation::{FALSE, HANDLE},
-    System::Diagnostics::Debug::{DEBUG_EVENT, ReadProcessMemory},
+    System::Diagnostics::Debug::ReadProcessMemory,
 };
 
 pub trait MemorySource {
