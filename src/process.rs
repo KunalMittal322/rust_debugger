@@ -33,19 +33,6 @@ impl Process {
     }
 
     pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<String> {
-        let module = match process.get_containing_module_mut(address) {
-            Some(module) => module,
-            None => return None
-        };
-        for export in module.exports.iter() {
-            if let ExportTarget::RVA(export_addr) = export.target {
-                if export_addr <= address {
-                    if closest.is_none() || closest_addr < export_addr {
-                        closest = AddressMatch::Export(export);
-                        closest_addr = export_addr;
-                    }
-                }
-            };
-        }
+        todo!()
     }
 }

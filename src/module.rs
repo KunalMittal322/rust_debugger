@@ -47,7 +47,7 @@ impl Module {
         self.address <= address && end > address
     }
 
-    fn from_memory_view(
+    pub fn from_memory_view(
         module_address: u64,
         name: Option<String>,
         memory_source: &dyn MemorySource,
@@ -61,7 +61,7 @@ impl Module {
         let size = pe_header.OptionalHeader.SizeOfImage as u64;
 
         let (pdb_info, pdb_name, pdb) =
-            Module::read_debug_info(&pe_header, module_address, memory_source)?;
+            Module::read_symbols(&pe_header, module_address, memory_source)?;
 
         let (export_list, module_name_from_header) =
             Self::read_exports(&pe_header, module_address, memory_source)?;
@@ -77,7 +77,7 @@ impl Module {
             name: module_name,
             address: module_address,
             size,
-            exports,
+            exports: export_list,
             pdb_info,
             pdb_name,
             pdb,
