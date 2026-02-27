@@ -1,4 +1,4 @@
-use crate::{memory::MemorySource, module::{self, Module}};
+use crate::{memory::MemorySource, module::Module};
 
 pub struct Process {
     module_list: std::vec::Vec<Module>,

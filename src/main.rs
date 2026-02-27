@@ -74,7 +74,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             WaitForDebugEventEx(&mut debug_event, INFINITE);
         }
         let mut windows_debug_event_continuity = DBG_CONTINUE;
-        let mut original_process = memory::BaseProcess {
+        let original_process = memory::BaseProcess {
             hProcess: debugger_handle,
         };
         match debug_event.dwDebugEventCode {
