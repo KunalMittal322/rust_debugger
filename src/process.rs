@@ -31,8 +31,4 @@ impl Process {
         }
         None
     }
-
-    pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<String> {
-        todo!()
-    }
 }

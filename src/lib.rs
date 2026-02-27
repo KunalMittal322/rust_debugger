@@ -4,3 +4,4 @@ pub mod debug_commands;
 pub mod memory;
 pub mod process;
 pub mod module;
+pub mod name_resolution;

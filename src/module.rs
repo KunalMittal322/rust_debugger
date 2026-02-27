@@ -1,6 +1,6 @@
 use crate::memory::{self, MemorySource};
 use pdb::PDB;
-use std::fs::File;
+use std::{fmt::Display, fs::File};
 use windows_sys::Win32::System::{
     Diagnostics::Debug::{
         IMAGE_DEBUG_DIRECTORY, IMAGE_DEBUG_TYPE_CODEVIEW, IMAGE_DIRECTORY_ENTRY_DEBUG,
@@ -15,9 +15,19 @@ pub enum ExportTarget {
 }
 
 pub struct Export {
-    name: Option<String>,
-    ordinal: u32,
-    target: ExportTarget,
+    pub name: Option<String>,
+    pub ordinal: u32,
+    pub target: ExportTarget,
+}
+
+impl Display for Export {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "Name: {}", name)
+        }else{
+            write!(f, "Ordinal: {}", self.ordinal)
+        }
+    }
 }
 
 #[repr(C)]
