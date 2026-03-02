@@ -19,6 +19,7 @@ impl Process {
     ) -> Result<&Module, &'static str> {
         let module = Module::from_memory_view(address, name, memory_source)?;
 
+        println!("Reading last module");
         self.module_list.push(module);
         Ok(self.module_list.last().unwrap())
     }

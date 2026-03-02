@@ -24,7 +24,7 @@ impl Display for Export {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(name) = &self.name {
             write!(f, "Name: {}", name)
-        }else{
+        } else {
             write!(f, "Ordinal: {}", self.ordinal)
         }
     }
@@ -65,17 +65,23 @@ impl Module {
         let dos_header: IMAGE_DOS_HEADER = memory::read_memory_data(memory_source, module_address)?;
 
         let pe_header_address = module_address + dos_header.e_lfanew as u64;
+        println!(
+            "Module Address Information: {:X} offset information: {}",
+            module_address, dos_header.e_lfanew as u64
+        );
 
         let pe_header: IMAGE_NT_HEADERS64 =
             memory::read_memory_data(memory_source, pe_header_address)?;
         let size = pe_header.OptionalHeader.SizeOfImage as u64;
+        println!("Size of image {}", size);
 
         let (pdb_info, pdb_name, pdb) =
             Module::read_symbols(&pe_header, module_address, memory_source)?;
 
         let (export_list, module_name_from_header) =
-            Self::read_exports(&pe_header, module_address, memory_source)?;
+            Module::read_exports(&pe_header, module_address, memory_source)?;
 
+        println!("Last check for errors real quick");
         let module_name = name.or(module_name_from_header);
         let module_name = match module_name {
             Some(s) => s,
@@ -102,7 +108,6 @@ impl Module {
         let mut pdb_info: Option<PdbInfo> = None;
         let mut pdb_info_name: Option<String> = None;
         let mut pdb: Option<PDB<File>> = None;
-        
 
         const MAX_NUM_DEBUG_DIR_ENTRIES: u64 = 20;
         const MAX_SIZE_OF_PDB_NAME: u64 = 256;
@@ -120,7 +125,7 @@ impl Module {
 
             for dir_index in 0..num_debug_dir {
                 let single_debug_directory_address =
-                    module_address + debug_directory_address + (dir_size * dir_index);
+                    debug_directory_address + (dir_size * dir_index);
                 let single_debug_directory = memory::read_memory_data::<IMAGE_DEBUG_DIRECTORY>(
                     memory_source,
                     single_debug_directory_address,
@@ -138,13 +143,13 @@ impl Module {
                         memory_source,
                         pdb_info_address + std::mem::size_of::<PdbInfo>() as u64,
                         MAX_SIZE_OF_PDB_NAME as usize,
-                        false
+                        false,
                     )?);
 
                     let pdb_file = File::open(pdb_info_name.as_ref().unwrap());
                     if let Ok(pdb_file) = pdb_file {
                         let pdb_data = PDB::open(pdb_file);
-                        if let Ok(pdb_data) = pdb_data{
+                        if let Ok(pdb_data) = pdb_data {
                             pdb = Some(pdb_data);
                         }
                     }
@@ -164,6 +169,10 @@ impl Module {
         let export_table_info =
             pe_header.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT as usize];
 
+        println!(
+            "Check export table info {:?}",
+            export_table_info.VirtualAddress
+        );
         if export_table_info.VirtualAddress != 0 {
             let export_table_addr = module_address + export_table_info.VirtualAddress as u64;
             let export_table_end = export_table_addr + export_table_info.Size as u64;
@@ -219,7 +228,7 @@ impl Module {
                 module_name,
             ));
         }
-        Err("Could not return an export list and name")
+        Ok((Vec::new(), module_name))
     }
 
     #[allow(clippy::too_many_arguments)]

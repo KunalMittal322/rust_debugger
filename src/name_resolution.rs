@@ -47,12 +47,12 @@ pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<St
         match symbol.parse() {
             Ok(pdb::SymbolData::Public(data)) if data.function => {
                 let rva = data.offset.to_rva(&address_map).unwrap_or_default();
-                let actual_address = module.address + rva.0 as u64;
+                let symbol_address = module.address + rva.0 as u64;
 
-                if actual_address <= address {
-                    if closest.is_none() || closest_addr < actual_address {
+                if symbol_address <= address {
+                    if closest.is_none() || closest_addr < symbol_address {
                         closest = AddressMatch::Public(data.name.to_string().to_string());
-                        closest_addr = actual_address;
+                        closest_addr = symbol_address;
                     } else {
                         break;
                     }
@@ -66,9 +66,9 @@ pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<St
     if let AddressMatch::Export(closest_export) = closest {
         let offset = address - closest_addr;
         let export_with_offset = if offset == 0 {
-            format!("{}!{}", &module.name, closest_export.to_string())
+            format!("{}!{}", &module.name, closest_export)
         } else {
-            format!("{}!{}+0x{:X}", &module.name, closest_export.to_string(), offset)
+            format!("{}!{}+0x{:X}", &module.name, closest_export, offset)
         };
         return Some(export_with_offset);
     }
@@ -76,9 +76,9 @@ pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<St
     if let AddressMatch::Public(closest_name) = closest {
         let offset = address- closest_addr;
         let symbol_with_offset = if offset == 0 {
-            format!("{}!{}", &module.name, closest_name.to_string())
+            format!("{}!{}", &module.name, closest_name)
         } else {
-            format!("{}!{}+0x{:X}", &module.name, closest_name.to_string(), offset)
+            format!("{}!{}+0x{:X}", &module.name, closest_name, offset)
         };
         return Some(symbol_with_offset);
     }
