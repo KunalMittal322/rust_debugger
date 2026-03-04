@@ -4,23 +4,27 @@ use codemap::CodeMap;
 use codemap_diagnostic::{ColorConfig, Diagnostic, Emitter, Level, SpanLabel, SpanStyle};
 use rust_sitter::errors::{ParseError, ParseErrorReason};
 
-
 fn parse_int(text: &str) -> u64 {
     let text = text.trim();
     if text.starts_with("0x") {
         let text = text.split_at(2).1;
         u64::from_str_radix(text, 16).unwrap()
-    }else{
+    } else {
         text.parse().unwrap()
     }
+}
+
+fn parse_symbol(text: &str) -> String {
+    text.to_string()
 }
 
 #[rust_sitter::grammar("command")]
 pub mod grammar {
     use crate::parser_debugger::parse_int;
+    use crate::parser_debugger::parse_symbol;
 
     #[rust_sitter::language]
-    pub enum CommandExpr{
+    pub enum CommandExpr {
         StepInto(#[rust_sitter::leaf(text = "s")] ()),
         Go(#[rust_sitter::leaf(text = "g")] ()),
         ReadRegisters(#[rust_sitter::leaf(text = "r")] ()),
@@ -30,16 +34,22 @@ pub mod grammar {
     }
     #[rust_sitter::language]
     pub enum EvalExpr {
-        Number(#[rust_sitter::leaf(pattern = r"\s*(\d+|0x[0-9a-fA-F]+)\s*", transform = parse_int)] u64),
+        Number(
+            #[rust_sitter::leaf(pattern = r"\s*(\d+|0x[0-9a-fA-F]+)\s*", transform = parse_int)]
+            u64,
+        ),
+        Symbol(
+            #[rust_sitter::leaf(pattern = r"(([a-zA-Z0-9_@#.]+!)?[a-zA-Z0-9_@#.]+)", transform = parse_symbol)]
+             String,
+        ),
         #[rust_sitter::prec_left(1)]
         Add(
             Box<EvalExpr>,
             #[rust_sitter::leaf(text = "+")] (),
             Box<EvalExpr>,
-        )
+        ),
     }
 }
-
 
 fn convert_parse_error_to_diagnostics(
     file_span: &codemap::Span,

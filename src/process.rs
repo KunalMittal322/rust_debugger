@@ -1,4 +1,7 @@
-use crate::{memory::MemorySource, module::Module};
+use crate::{
+    memory::MemorySource,
+    module::{Export, Module},
+};
 
 pub struct Process {
     module_list: std::vec::Vec<Module>,
@@ -24,9 +27,28 @@ impl Process {
         Ok(self.module_list.last().unwrap())
     }
 
-    pub fn get_containing_module_mut(&mut self, address: u64) -> Option<&mut Module>{
+    pub fn get_containing_module_mut(&mut self, address: u64) -> Option<&mut Module> {
         for module in self.module_list.iter_mut() {
             if module.contains_address(address) {
+                return Some(module);
+            }
+        }
+        None
+    }
+
+    pub fn get_address_from_name(&mut self, name: &str) -> Option<&mut Module> {
+        for module in self.module_list.iter_mut() {
+            if module.name == name {
+                return Some(module);
+            }
+            if module
+                .name
+                .split("\\")
+                .last()
+                .unwrap_or(&module.name)
+                .to_lowercase()
+                == name
+            {
                 return Some(module);
             }
         }

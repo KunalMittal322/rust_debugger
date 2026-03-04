@@ -5,3 +5,4 @@ pub mod memory;
 pub mod process;
 pub mod module;
 pub mod name_resolution;
+pub mod event;

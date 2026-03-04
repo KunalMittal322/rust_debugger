@@ -5,11 +5,15 @@ use windows_sys::Win32::{
     System::Diagnostics::Debug::{CONTEXT, GetThreadContext, ReadProcessMemory, SetThreadContext},
 };
 
-use crate::parser_debugger::grammar::{EvalExpr};
+use crate::{name_resolution::resolve_name_to_address, parser_debugger::grammar::EvalExpr, process::Process};
 
 #[repr(align(16))]
 pub struct AlignedContext {
     pub context: CONTEXT,
+}
+
+pub struct EvalContext<'a> {
+    pub process: &'a mut Process,
 }
 
 const CONTEXT_AMD64: u32 = 0x00100000;
@@ -82,10 +86,13 @@ pub fn step_into(thread_handle: HANDLE) {
     }
 }
 
-pub fn evaluate_expression(expr: EvalExpr) -> u64 {
+pub fn evaluate_expression(expr: EvalExpr, context: &mut EvalContext) -> Result<u64, String> {
     match expr {
-        EvalExpr::Number(x) => x,
-        EvalExpr::Add(x, _, y) => evaluate_expression(*x) + evaluate_expression(*y),
+        EvalExpr::Number(x) => Ok(x),
+        EvalExpr::Add(x, _, y) => Ok(evaluate_expression(*x, context)? + evaluate_expression(*y, context)?),
+        EvalExpr::Symbol(sym) => {
+            resolve_name_to_address(&sym, context.process)
+        },
     }
 }
 

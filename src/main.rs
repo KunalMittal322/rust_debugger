@@ -1,6 +1,14 @@
-use windows_sys::Win32::{Foundation::*, Storage::FileSystem::GetFinalPathNameByHandleW, System::{Diagnostics::Debug::*, Environment::*, Threading::*}};
+use windows_sys::Win32::{
+    Foundation::*,
+    Storage::FileSystem::GetFinalPathNameByHandleW,
+    System::{Diagnostics::Debug::*, Environment::*, Threading::*},
+};
 
-use debuggerRust::{debug_commands, memory, name_resolution};
+use debuggerRust::{
+    debug_commands::{self, EvalContext},
+    event, memory, name_resolution,
+    parser_debugger::grammar::EvalExpr,
+};
 use debuggerRust::{parser_debugger, process::Process};
 use std::{ffi::c_void, os::windows::ffi::OsStringExt, ptr::null};
 
@@ -74,105 +82,13 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
         let original_process = memory::BaseProcess {
             hProcess: debugger_handle,
         };
-        match debug_event.dwDebugEventCode {
-            EXCEPTION_DEBUG_EVENT => {
-                println!("EXCEPTION IN DEBUG");
-                let exception_type =
-                    unsafe { debug_event.u.Exception.ExceptionRecord.ExceptionCode };
-                let first_time = unsafe { debug_event.u.Exception.dwFirstChance };
-                if after_step_input && exception_type == EXCEPTION_SINGLE_STEP && first_time != 0 {
-                    windows_debug_event_continuity = DBG_CONTINUE;
-                    after_step_input = false;
-                } else {
-                    windows_debug_event_continuity = DBG_EXCEPTION_NOT_HANDLED;
-                    println!(
-                        "This is not our first rodeo/some exception went wack: {}, {}, {}",
-                        after_step_input, exception_type, first_time
-                    );
-                }
-            }
-            CREATE_THREAD_DEBUG_EVENT => println!("CreateThread"),
-            CREATE_PROCESS_DEBUG_EVENT => {
-                println!("CreateProcess, LOADING FIRST MODULE");
-                let create_process_debug_info = unsafe { debug_event.u.CreateProcessInfo };
-                let base_address = create_process_debug_info.lpBaseOfImage as u64;
-                let mut dll_name = vec![0u16; 260];
-                let dll_name_len = unsafe {
-                    GetFinalPathNameByHandleW(create_process_debug_info.hFile, dll_name.as_mut_ptr(), 260, 0)
-                } as usize;
-                let dll_name = if dll_name_len != 0 {
-                    // This will be the full name, e.g. \\?\C:\git\HelloWorld\hello.exe
-                    // It might be useful to have the full name, but it's not available for all
-                    // modules in all cases.
-                    let full_path = std::ffi::OsString::from_wide(&dll_name[0..dll_name_len]);
-                    let file_name = std::path::Path::new(&full_path).file_name();
-
-                    match file_name {
-                        None => None,
-                        Some(s) => Some(s.to_string_lossy().to_string()),
-                    }
-                } else {
-                    None
-                };
-                let module = process
-                    .add_module(base_address, dll_name, &original_process)
-                    .unwrap();
-                println!("LoadDLL: {:X}      {}", module.address, module.name);
-            }
-            EXIT_THREAD_DEBUG_EVENT => println!("ExitThread"),
-            EXIT_PROCESS_DEBUG_EVENT => println!("ExitProcess"),
-            LOAD_DLL_DEBUG_EVENT => {
-                println!("LoadDll");
-                let load_dll = unsafe { debug_event.u.LoadDll };
-                let dll_base: u64 = load_dll.lpBaseOfDll as u64;
-                println!("Dll Base: {:X}", dll_base);
-
-                if !load_dll.lpImageName.is_null() {
-                    let dll_name_address = memory::read_memory_data::<u64>(
-                        &original_process,
-                        load_dll.lpImageName as u64,
-                    )
-                    .unwrap();
-                    let is_wide = load_dll.fUnicode as i32 != FALSE;
-
-                    let dll_name = memory::read_memory_string(
-                        &original_process,
-                        dll_name_address,
-                        260,
-                        is_wide,
-                    )
-                    .unwrap();
-                    let module = process
-                        .add_module(dll_base, Some(dll_name), &original_process)
-                        .unwrap();
-                    println!("LoadDLL: {:X}      {}", module.address, module.name);
-                } else {
-                    println!("No Dll Name found");
-                };
-            }
-            UNLOAD_DLL_DEBUG_EVENT => println!("UnloadDll"),
-            OUTPUT_DEBUG_STRING_EVENT => {
-                println!("OutputDebugString");
-                let debug_string_info = unsafe { debug_event.u.DebugString };
-                let is_wide = debug_string_info.fUnicode != 0;
-                let address = debug_string_info.lpDebugStringData as u64;
-                let len = debug_string_info.nDebugStringLength as usize;
-
-                let debug_string2 =
-                    memory::read_memory_string(&original_process, address, len, is_wide);
-                println!("Debug String: {}", debug_string2.unwrap());
-
-                let debug_string =
-                    memory::read_memory_string(&original_process, address, len, is_wide);
-                println!("Debug String: {}", debug_string.unwrap());
-            }
-            RIP_EVENT => println!("RipEvent"),
-            _ => panic!("Unexpected debug event"),
-        }
-
-        if debug_event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT {
-            break;
-        }
+        event::match_debug_event(
+            original_process,
+            debug_event,
+            &mut process,
+            &mut after_step_input,
+            &mut windows_debug_event_continuity,
+        );
         while user_command_loop {
             let debug_event_thread = AutoCloseHandle(unsafe {
                 OpenThread(
@@ -193,6 +109,9 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             if main_thread_context == FALSE {
                 panic!("Could not read thread handle");
             }
+            let mut eval_context = EvalContext {
+                process: &mut process,
+            };
 
             if let Some(sym) = name_resolution::resolve_address_to_name(
                 main_thread_context_buffer.context.Rip,
@@ -205,6 +124,19 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                     debug_event.dwThreadId, main_thread_context_buffer.context.Rip
                 );
             }
+
+            let mut eval_expr = |expr: Box<EvalExpr>| -> Option<u64> {
+                let mut eval_context = EvalContext {
+                    process: &mut process,
+                };
+                match debug_commands::evaluate_expression(*expr, &mut eval_context) {
+                    Ok(numeric_value) => Some(numeric_value),
+                    Err(msg) => {
+                        println!("Could not evaluate expression: {}", msg);
+                        None
+                    }
+                }
+            };
 
             let cmd = parser_debugger::read_command();
             match cmd {
@@ -226,12 +158,16 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 }
                 parser_debugger::grammar::CommandExpr::Evaluation(_, expr) => {
                     println!("EVALUATION");
-                    println!("= 0x{:X}", debug_commands::evaluate_expression(*expr));
+                    if let Some(numeric_value) = eval_expr(expr) {
+                        println!("= 0x{:X}", numeric_value)
+                    }
                 }
+
                 parser_debugger::grammar::CommandExpr::DisplayBytes(_, expr) => {
                     println!("DISPLAY BYTES");
-                    let memory_address = debug_commands::evaluate_expression(*expr);
-                    debug_commands::display_memory(debugger_handle, memory_address);
+                    if let Some(numeric_value) = eval_expr(expr) {
+                        println!("= 0x{:X}", numeric_value)
+                    }
                 }
             }
         }
