@@ -1,4 +1,4 @@
-use crate::process::{self, Process};
+use crate::process::Process;
 use std::os::windows::ffi::OsStringExt;
 
 use windows_sys::Win32::{

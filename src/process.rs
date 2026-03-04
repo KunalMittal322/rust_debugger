@@ -1,6 +1,6 @@
 use crate::{
     memory::MemorySource,
-    module::{Export, Module},
+    module::Module,
 };
 
 pub struct Process {

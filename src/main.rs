@@ -1,6 +1,5 @@
 use windows_sys::Win32::{
     Foundation::*,
-    Storage::FileSystem::GetFinalPathNameByHandleW,
     System::{Diagnostics::Debug::*, Environment::*, Threading::*},
 };
 
@@ -10,7 +9,7 @@ use debuggerRust::{
     parser_debugger::grammar::EvalExpr,
 };
 use debuggerRust::{parser_debugger, process::Process};
-use std::{ffi::c_void, os::windows::ffi::OsStringExt, ptr::null};
+use std::{ffi::c_void, ptr::null};
 
 use debug_commands::AlignedContext;
 use debug_commands::CONTEXT_ALL;
@@ -109,9 +108,6 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             if main_thread_context == FALSE {
                 panic!("Could not read thread handle");
             }
-            let mut eval_context = EvalContext {
-                process: &mut process,
-            };
 
             if let Some(sym) = name_resolution::resolve_address_to_name(
                 main_thread_context_buffer.context.Rip,
