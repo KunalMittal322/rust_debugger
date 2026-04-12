@@ -31,7 +31,11 @@ pub mod grammar {
         DisplayBytes(#[rust_sitter::leaf(text = "db")] (), Box<EvalExpr>),
         Evaluation(#[rust_sitter::leaf(text = "?")] (), Box<EvalExpr>),
         Quit(#[rust_sitter::leaf(text = "q")] ()),
+        SetBreakpoint(#[rust_sitter::leaf(text = "bs")] (), Box<EvalExpr>),
+        ListBreakPoint(#[rust_sitter::leaf(text = "bl")] ()),
+        ClearBreakPoint(#[rust_sitter::leaf(text = "bc")] (), Box<EvalExpr>),
     }
+
     #[rust_sitter::language]
     pub enum EvalExpr {
         Number(
@@ -39,7 +43,7 @@ pub mod grammar {
             u64,
         ),
         Symbol(
-            #[rust_sitter::leaf(pattern = r"(([a-zA-Z0-9_@#.]+!)?[a-zA-Z0-9_@#.]+)", transform = parse_symbol)]
+            #[rust_sitter::leaf(pattern = r"(\s*([a-zA-Z0-9_@#.]+!)?[a-zA-Z0-9_@#.]+)", transform = parse_symbol)]
              String,
         ),
         #[rust_sitter::prec_left(1)]

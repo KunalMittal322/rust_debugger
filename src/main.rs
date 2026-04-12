@@ -4,7 +4,7 @@ use windows_sys::Win32::{
 };
 
 use debuggerRust::{
-    debug_commands::{self, EvalContext},
+    debug_commands::{self, BreakPointManager, EvalContext},
     event, memory, name_resolution,
     parser_debugger::grammar::EvalExpr,
 };
@@ -69,6 +69,7 @@ fn parse_command_line() -> Result<Vec<u16>, &'static str> {
 }
 
 fn main_debugger_loop(debugger_handle: HANDLE) {
+    let mut breakpoint_manager: BreakPointManager = BreakPointManager::default();
     let mut after_step_input = true;
     loop {
         let mut debug_event: DEBUG_EVENT = unsafe { std::mem::zeroed() };
@@ -163,6 +164,27 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                     println!("DISPLAY BYTES");
                     if let Some(numeric_value) = eval_expr(expr) {
                         println!("= 0x{:X}", numeric_value)
+                    }
+                }
+                parser_debugger::grammar::CommandExpr::SetBreakpoint(_, expr) => {
+                    println!("SETTING BREAKPOINT");
+                    if let Some(breakpoint_address) = eval_expr(expr) {
+                        breakpoint_manager.add_breakpoint(breakpoint_address, &mut process);
+                    }
+                }
+                parser_debugger::grammar::CommandExpr::ListBreakPoint(_) => {
+                    println!("LISTING ALL BREAKPOINTS");
+                    match breakpoint_manager.list_breakpoints() {
+                        None => println!("NO BREAKPOINTS SET"),
+                        Some(breakpoint_list) => {
+                            breakpoint_list.iter().for_each(|val| println!("{}", val));
+                        }
+                    };
+                }
+                parser_debugger::grammar::CommandExpr::ClearBreakPoint(_, expr) => {
+                    println!("CLEARING BREAKPOINT");
+                    if let Some(breakpoint_address) = eval_expr(expr) {
+                        breakpoint_manager.remove_breakpoint(breakpoint_address);
                     }
                 }
             }

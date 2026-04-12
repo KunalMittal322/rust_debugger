@@ -1,7 +1,4 @@
-use crate::{
-    memory::MemorySource,
-    module::Module,
-};
+use crate::{memory::MemorySource, module::Module};
 
 pub struct Process {
     module_list: std::vec::Vec<Module>,
@@ -22,7 +19,6 @@ impl Process {
     ) -> Result<&Module, &'static str> {
         let module = Module::from_memory_view(address, name, memory_source)?;
 
-        println!("Reading last module");
         self.module_list.push(module);
         Ok(self.module_list.last().unwrap())
     }
@@ -36,7 +32,7 @@ impl Process {
         None
     }
 
-    pub fn get_address_from_name(&mut self, name: &str) -> Option<&mut Module> {
+    pub fn get_module_from_name(&mut self, name: &str) -> Option<&Module> {
         for module in self.module_list.iter_mut() {
             if module.name == name {
                 return Some(module);

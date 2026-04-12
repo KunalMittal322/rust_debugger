@@ -9,11 +9,13 @@ use windows_sys::Win32::System::{
     SystemServices::{IMAGE_DOS_HEADER, IMAGE_EXPORT_DIRECTORY},
 };
 
+#[derive(Debug)]
 pub enum ExportTarget {
     RVA(u64),
     Forwarder(String),
 }
 
+#[derive(Debug)]
 pub struct Export {
     pub name: Option<String>,
     pub ordinal: u32,
@@ -31,7 +33,7 @@ impl Display for Export {
 }
 
 #[repr(C)]
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, Debug)]
 pub struct PdbInfo {
     pub signature: u32,
     pub guid: windows::core::GUID,
@@ -39,6 +41,7 @@ pub struct PdbInfo {
     // Null terminated name goes after the end
 }
 
+#[derive(Debug)]
 pub struct Module {
     pub name: String,
     pub address: u64,
@@ -65,15 +68,10 @@ impl Module {
         let dos_header: IMAGE_DOS_HEADER = memory::read_memory_data(memory_source, module_address)?;
 
         let pe_header_address = module_address + dos_header.e_lfanew as u64;
-        println!(
-            "Module Address Information: {:X} offset information: {}",
-            module_address, dos_header.e_lfanew as u64
-        );
 
         let pe_header: IMAGE_NT_HEADERS64 =
             memory::read_memory_data(memory_source, pe_header_address)?;
         let size = pe_header.OptionalHeader.SizeOfImage as u64;
-        println!("Size of image {}", size);
 
         let (pdb_info, pdb_name, pdb) =
             Module::read_symbols(&pe_header, module_address, memory_source)?;
@@ -81,7 +79,6 @@ impl Module {
         let (export_list, module_name_from_header) =
             Module::read_exports(&pe_header, module_address, memory_source)?;
 
-        println!("Last check for errors real quick");
         let module_name = name.or(module_name_from_header);
         let module_name = match module_name {
             Some(s) => s,
@@ -146,12 +143,37 @@ impl Module {
                         false,
                     )?);
 
+                    if let Some(ref mut pdb_info_internal_string) = pdb_info_name {
+                        let pdb_file_name = pdb_info_internal_string.clone();
+                        let guid_of_pdb = pdb_info.unwrap().guid;
+                        pdb_info_internal_string.insert_str(
+                            0,
+                            format!(
+                                r"C:\ProgramData\Dbg\sym\{}\{:X}{:X}{:X}{}{}\",
+                                pdb_file_name.as_str(),
+                                guid_of_pdb.data1,
+                                guid_of_pdb.data2,
+                                guid_of_pdb.data3,
+                                guid_of_pdb
+                                    .data4
+                                    .map(|slice| { format!("{:02X}", slice) })
+                                    .concat()
+                                    .as_str(),
+                                pdb_info.unwrap().age
+                            )
+                            .as_str(),
+                        );
+                    }
+
                     let pdb_file = File::open(pdb_info_name.as_ref().unwrap());
+
                     if let Ok(pdb_file) = pdb_file {
                         let pdb_data = PDB::open(pdb_file);
                         if let Ok(pdb_data) = pdb_data {
                             pdb = Some(pdb_data);
                         }
+                    } else {
+                        println!("Error when reading pdb/symbol table: {:?}", &pdb_file);
                     }
                 }
             }
@@ -169,10 +191,6 @@ impl Module {
         let export_table_info =
             pe_header.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT as usize];
 
-        println!(
-            "Check export table info {:?}",
-            export_table_info.VirtualAddress
-        );
         if export_table_info.VirtualAddress != 0 {
             let export_table_addr = module_address + export_table_info.VirtualAddress as u64;
             let export_table_end = export_table_addr + export_table_info.Size as u64;
