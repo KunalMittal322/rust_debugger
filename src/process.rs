@@ -2,13 +2,27 @@ use crate::{memory::MemorySource, module::Module};
 
 pub struct Process {
     module_list: std::vec::Vec<Module>,
+    thread_list: std::vec::Vec<u32>,
 }
 
 impl Process {
     pub fn new() -> Process {
         Process {
             module_list: Vec::new(),
+            thread_list: Vec::new(),
         }
+    }
+
+    pub fn add_thread(&mut self, thread_id: u32) {
+        self.thread_list.push(thread_id);
+    }
+
+    pub fn remove_thread(&mut self, thread_id: u32) {
+        self.thread_list.retain(|x| *x != thread_id);
+    }
+
+    pub fn iterate_threads(&self) -> core::slice::Iter<'_, u32> {
+        self.thread_list.iter()
     }
 
     pub fn add_module(

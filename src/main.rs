@@ -3,8 +3,10 @@ use windows_sys::Win32::{
     System::{Diagnostics::Debug::*, Environment::*, Threading::*},
 };
 
+use utils::*;
 use debuggerRust::{
-    debug_commands::{self, BreakPointManager, EvalContext},
+    breakpoint::BreakPointManager,
+    debug_commands::{self, EvalContext},
     event, memory, name_resolution,
     parser_debugger::grammar::EvalExpr,
 };
@@ -22,23 +24,6 @@ fn wcslen(ptr: *const u16) -> usize {
         }
     }
     len
-}
-
-#[derive(Debug)]
-struct AutoCloseHandle(HANDLE);
-
-impl AutoCloseHandle {
-    pub fn handle(&self) -> HANDLE {
-        self.0
-    }
-}
-
-impl Drop for AutoCloseHandle {
-    fn drop(&mut self) {
-        unsafe {
-            CloseHandle(self.0);
-        }
-    }
 }
 
 fn show_usage(error_message: &str) {
@@ -90,7 +75,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
             &mut windows_debug_event_continuity,
         );
         while user_command_loop {
-            let debug_event_thread = AutoCloseHandle(unsafe {
+            let debug_event_thread = AutoClosedHandle(unsafe {
                 OpenThread(
                     THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
                     FALSE,

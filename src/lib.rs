@@ -6,3 +6,5 @@ pub mod process;
 pub mod module;
 pub mod name_resolution;
 pub mod event;
+pub mod breakpoint;
+pub mod utils;
