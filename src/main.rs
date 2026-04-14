@@ -3,8 +3,8 @@ use windows_sys::Win32::{
     System::{Diagnostics::Debug::*, Environment::*, Threading::*},
 };
 
-use utils::*;
 use debuggerRust::{
+    utils::*,
     breakpoint::BreakPointManager,
     debug_commands::{self, EvalContext},
     event, memory, name_resolution,
@@ -130,7 +130,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 }
                 parser_debugger::grammar::CommandExpr::ReadRegisters(_) => {
                     println!("READ REGISTERS");
-                    debug_commands::read_registers(debug_event_thread.handle() as *mut c_void);
+    debug_commands::read_registers(debug_event_thread.handle() as *mut c_void);
                 }
                 parser_debugger::grammar::CommandExpr::StepInto(_) => {
                     println!("STEP");
@@ -174,6 +174,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 }
             }
         }
+        breakpoint_manager.apply_breakpoints(&mut process, debug_event.dwThreadId);
         unsafe {
             ContinueDebugEvent(
                 debug_event.dwProcessId,
@@ -221,8 +222,8 @@ fn main() {
     if ret == FALSE {
         panic!("CreateProcessW Failed");
     }
-    let _main_process_handle = AutoCloseHandle(process_information.dwProcessId as *mut c_void);
+    let _main_process_handle = AutoClosedHandle(process_information.dwProcessId as *mut c_void);
     let _main_process_thread_handle =
-        AutoCloseHandle(process_information.dwThreadId as *mut c_void);
+        AutoClosedHandle(process_information.dwThreadId as *mut c_void);
     main_debugger_loop(process_information.hProcess);
 }

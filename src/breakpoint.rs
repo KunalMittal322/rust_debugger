@@ -1,7 +1,13 @@
 use std::{collections::HashSet, fmt::Display, hash::Hash};
 
 use num_traits::int::PrimInt;
-use windows_sys::Win32::{Foundation::FALSE, System::Threading::{OpenThread, THREAD_GET_CONTEXT, THREAD_SET_CONTEXT}};
+use windows_sys::Win32::{
+    Foundation::FALSE,
+    System::{
+        Diagnostics::Debug::{GetThreadContext, SetThreadContext},
+        Threading::{OpenThread, THREAD_GET_CONTEXT, THREAD_SET_CONTEXT},
+    },
+};
 
 use crate::{
     debug_commands::{AlignedContext, CONTEXT_ALL},
@@ -9,6 +15,18 @@ use crate::{
     process::Process,
     utils::AutoClosedHandle,
 };
+
+const DR7_LEN_BIT: [usize; 4] = [19, 23, 27, 31];
+const DR7_RW_BIT: [usize; 4] = [17, 21, 25, 29];
+const DR7_LE_BIT: [usize; 4] = [0, 2, 4, 6];
+const DR7_GE_BIT: [usize; 4] = [1, 3, 5, 7];
+
+const DR7_LEN_SIZE: usize = 2;
+const DR7_RW_SIZE: usize = 2;
+
+const DR6_B_BIT: [usize; 4] = [0, 1, 2, 3];
+
+const EFLAG_RF: usize = 16;
 
 #[derive(Eq, Debug, Clone)]
 pub struct Breakpoint {
@@ -77,13 +95,48 @@ impl BreakPointManager {
         }
     }
 
-    pub fn apply_breakpoints(&self, process: &mut Process) {
+    pub fn apply_breakpoints(&self, process: &mut Process, resume_thread_id: u32) {
         for thread_id in process.iterate_threads() {
             let mut ctx: AlignedContext = unsafe { std::mem::zeroed() };
             ctx.context.ContextFlags = CONTEXT_ALL;
             let thread = AutoClosedHandle(unsafe {
-               OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, *thread_id)
+                OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT, FALSE, *thread_id)
             });
+            let thread_object = unsafe { GetThreadContext(thread.handle(), &mut ctx.context) };
+            if thread_object == FALSE {
+                println!("Could not get information about thread handle");
+                continue;
+            }
+            for idx in 0..4 {
+                if self.breakpoint_set.len() > idx {
+                    set_bits(&mut ctx.context.Dr7, 0, DR7_LEN_BIT[idx], DR7_LEN_SIZE);
+                    set_bits(&mut ctx.context.Dr7, 0, DR7_RW_BIT[idx], DR7_RW_SIZE);
+                    set_bits(&mut ctx.context.Dr7, 1, DR7_LE_BIT[idx], 1);
+
+                    let small_breakpoint_list = self.list_breakpoints().unwrap();
+                    match idx {
+                        0 => ctx.context.Dr0 = small_breakpoint_list[idx].address,
+                        1 => ctx.context.Dr1 = small_breakpoint_list[idx].address,
+                        2 => ctx.context.Dr2 = small_breakpoint_list[idx].address,
+                        3 => ctx.context.Dr3 = small_breakpoint_list[idx].address,
+                        _ => (),
+                    }
+                } else {
+                    set_bits(&mut ctx.context.Dr7, 0, DR7_LE_BIT[idx], 1);
+                    break;
+                }
+            }
+            if *thread_id == resume_thread_id {
+                set_bits(&mut ctx.context.EFlags, 1, EFLAG_RF, 1);
+            }
+            let apply_breakpoint_context =
+                unsafe { SetThreadContext(thread.handle(), &mut ctx.context) };
+            if apply_breakpoint_context == FALSE {
+                println!(
+                    "Could not set thread context to apply breakpoints of thread {:x}",
+                    thread_id
+                );
+            }
         }
     }
 }
