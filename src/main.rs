@@ -4,11 +4,11 @@ use windows_sys::Win32::{
 };
 
 use debuggerRust::{
-    utils::*,
     breakpoint::BreakPointManager,
     debug_commands::{self, EvalContext},
     event, memory, name_resolution,
     parser_debugger::grammar::EvalExpr,
+    utils::*,
 };
 use debuggerRust::{parser_debugger, process::Process};
 use std::{ffi::c_void, ptr::null};
@@ -67,34 +67,35 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
         let original_process = memory::BaseProcess {
             hProcess: debugger_handle,
         };
+        let debug_event_thread = AutoClosedHandle(unsafe {
+            OpenThread(
+                THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
+                FALSE,
+                debug_event.dwThreadId,
+            )
+        });
+        let mut main_thread_context_buffer: AlignedContext = unsafe { std::mem::zeroed() };
+        main_thread_context_buffer.context.ContextFlags = CONTEXT_ALL;
+
+        let main_thread_context = unsafe {
+            GetThreadContext(
+                debug_event_thread.handle(),
+                &mut main_thread_context_buffer.context,
+            )
+        };
+        if main_thread_context == FALSE {
+            panic!("Could not read thread handle");
+        }
         event::match_debug_event(
             original_process,
             debug_event,
             &mut process,
             &mut after_step_input,
             &mut windows_debug_event_continuity,
+            &breakpoint_manager,
+            &main_thread_context_buffer
         );
         while user_command_loop {
-            let debug_event_thread = AutoClosedHandle(unsafe {
-                OpenThread(
-                    THREAD_GET_CONTEXT | THREAD_SET_CONTEXT,
-                    FALSE,
-                    debug_event.dwThreadId,
-                )
-            });
-            let mut main_thread_context_buffer: AlignedContext = unsafe { std::mem::zeroed() };
-            main_thread_context_buffer.context.ContextFlags = CONTEXT_ALL;
-
-            let main_thread_context = unsafe {
-                GetThreadContext(
-                    debug_event_thread.handle(),
-                    &mut main_thread_context_buffer.context,
-                )
-            };
-            if main_thread_context == FALSE {
-                panic!("Could not read thread handle");
-            }
-
             if let Some(sym) = name_resolution::resolve_address_to_name(
                 main_thread_context_buffer.context.Rip,
                 &mut process,
@@ -130,7 +131,7 @@ fn main_debugger_loop(debugger_handle: HANDLE) {
                 }
                 parser_debugger::grammar::CommandExpr::ReadRegisters(_) => {
                     println!("READ REGISTERS");
-    debug_commands::read_registers(debug_event_thread.handle() as *mut c_void);
+                    debug_commands::read_registers(debug_event_thread.handle() as *mut c_void);
                 }
                 parser_debugger::grammar::CommandExpr::StepInto(_) => {
                     println!("STEP");

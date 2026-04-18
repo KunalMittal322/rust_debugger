@@ -1,10 +1,14 @@
-use crate::process::Process;
+use crate::{breakpoint::BreakPointManager, debug_commands::AlignedContext, process::Process};
 use std::os::windows::ffi::OsStringExt;
 
 use windows_sys::Win32::{
     Foundation::{DBG_CONTINUE, DBG_EXCEPTION_NOT_HANDLED, EXCEPTION_SINGLE_STEP, FALSE},
     Storage::FileSystem::GetFinalPathNameByHandleW,
-    System::Diagnostics::Debug::{CREATE_PROCESS_DEBUG_EVENT, CREATE_THREAD_DEBUG_EVENT, DEBUG_EVENT, EXCEPTION_DEBUG_EVENT, EXIT_PROCESS_DEBUG_EVENT, EXIT_THREAD_DEBUG_EVENT, LOAD_DLL_DEBUG_EVENT, OUTPUT_DEBUG_STRING_EVENT, RIP_EVENT, UNLOAD_DLL_DEBUG_EVENT},
+    System::Diagnostics::Debug::{
+        CREATE_PROCESS_DEBUG_EVENT, CREATE_THREAD_DEBUG_EVENT, DEBUG_EVENT, EXCEPTION_DEBUG_EVENT,
+        EXIT_PROCESS_DEBUG_EVENT, EXIT_THREAD_DEBUG_EVENT, LOAD_DLL_DEBUG_EVENT,
+        OUTPUT_DEBUG_STRING_EVENT, RIP_EVENT, UNLOAD_DLL_DEBUG_EVENT,
+    },
 };
 
 use crate::memory::{self, BaseProcess};
@@ -15,15 +19,24 @@ pub fn match_debug_event(
     process: &mut Process,
     after_step_input: &mut bool,
     windows_debug_event_continuity: &mut i32,
+    breakpoint_manager: &BreakPointManager,
+    ctx: &AlignedContext,
 ) {
     match debug_event.dwDebugEventCode {
         EXCEPTION_DEBUG_EVENT => {
             println!("EXCEPTION IN DEBUG");
             let exception_type = unsafe { debug_event.u.Exception.ExceptionRecord.ExceptionCode };
             let first_time = unsafe { debug_event.u.Exception.dwFirstChance };
+            println!(
+                "Checking bp index: {:?}",
+                breakpoint_manager.was_breakpoint_hit(&ctx.context)
+            );
             if *after_step_input && exception_type == EXCEPTION_SINGLE_STEP && first_time != 0 {
                 *windows_debug_event_continuity = DBG_CONTINUE;
                 *after_step_input = false;
+            } else if let Some(bp_index) = breakpoint_manager.was_breakpoint_hit(&ctx.context) {
+                println!("Breakpoint {} hit", bp_index);
+                *windows_debug_event_continuity = DBG_CONTINUE;
             } else {
                 *windows_debug_event_continuity = DBG_EXCEPTION_NOT_HANDLED;
                 println!(
@@ -71,7 +84,6 @@ pub fn match_debug_event(
             println!("LoadDll");
             let load_dll = unsafe { debug_event.u.LoadDll };
             let dll_base: u64 = load_dll.lpBaseOfDll as u64;
-            println!("Dll Base: {:X}", dll_base);
 
             if !load_dll.lpImageName.is_null() {
                 let dll_name_address =

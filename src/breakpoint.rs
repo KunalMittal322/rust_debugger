@@ -4,7 +4,7 @@ use num_traits::int::PrimInt;
 use windows_sys::Win32::{
     Foundation::FALSE,
     System::{
-        Diagnostics::Debug::{GetThreadContext, SetThreadContext},
+        Diagnostics::Debug::{CONTEXT, GetThreadContext, SetThreadContext},
         Threading::{OpenThread, THREAD_GET_CONTEXT, THREAD_SET_CONTEXT},
     },
 };
@@ -139,6 +139,14 @@ impl BreakPointManager {
             }
         }
     }
+    pub fn was_breakpoint_hit(&self, ctx: &CONTEXT) -> Option<u32> {
+        for idx in 0..self.breakpoint_set.len() {
+            if get_bit(ctx.Dr6, DR6_B_BIT[idx]){
+                return Some(idx as u32)
+            }
+        }
+        None
+    }
 }
 
 fn set_bits<T: PrimInt>(val: &mut T, set_val: T, start_bit: usize, bit_count: usize) {
@@ -149,4 +157,8 @@ fn set_bits<T: PrimInt>(val: &mut T, set_val: T, start_bit: usize, bit_count: us
 
     *val = *val & inv_mask;
     *val = *val | (set_val << (start_bit + 1 - bit_count));
+}
+fn get_bit<T: PrimInt>(val: T, bit_index: usize) -> bool {
+    let mask = T::one() << bit_index;
+    (val & mask) != T::zero()
 }

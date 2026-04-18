@@ -53,7 +53,6 @@ pub fn resolve_function_in_module(module: &Module, func: &str) -> Option<u64> {
 
 pub fn resolve_address_to_name(address: u64, process: &mut Process) -> Option<String> {
     let module = process.get_containing_module_mut(address)?;
-
     let mut closest: AddressMatch = AddressMatch::None;
     let mut closest_addr: u64 = 0;
 

@@ -139,17 +139,17 @@ impl Module {
                     pdb_info_name = Some(memory::read_memory_string(
                         memory_source,
                         pdb_info_address + std::mem::size_of::<PdbInfo>() as u64,
-                        MAX_SIZE_OF_PDB_NAME as usize,
+                        10000 as usize,
                         false,
                     )?);
 
-                    if let Some(ref mut pdb_info_internal_string) = pdb_info_name {
+                    /*if let Some(ref mut pdb_info_internal_string) = pdb_info_name {
                         let pdb_file_name = pdb_info_internal_string.clone();
                         let guid_of_pdb = pdb_info.unwrap().guid;
                         pdb_info_internal_string.insert_str(
                             0,
                             format!(
-                                r"C:\ProgramData\Dbg\sym\{}\{:X}{:X}{:X}{}{}\",
+                                r"C:\ProgramData\dbg\sym\{}\{:08X}{:04X}{:04X}{}{}\",
                                 pdb_file_name.as_str(),
                                 guid_of_pdb.data1,
                                 guid_of_pdb.data2,
@@ -163,7 +163,7 @@ impl Module {
                             )
                             .as_str(),
                         );
-                    }
+                    }*/
 
                     let pdb_file = File::open(pdb_info_name.as_ref().unwrap());
 
@@ -173,7 +173,11 @@ impl Module {
                             pdb = Some(pdb_data);
                         }
                     } else {
-                        println!("Error when reading pdb/symbol table: {:?}", &pdb_file);
+                        println!(
+                            "Error when reading pdb/symbol table at location {:?}: {:?}",
+                            pdb_info_name.as_ref(),
+                            &pdb_file
+                        );
                     }
                 }
             }
